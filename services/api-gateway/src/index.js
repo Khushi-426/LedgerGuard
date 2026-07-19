@@ -38,13 +38,21 @@ app.use(
 app.use(
   "/transactions",
   requireAuth,
-  createProxyMiddleware({ target: TRANSACTION_SERVICE_URL, changeOrigin: true })
+  createProxyMiddleware({
+    target: TRANSACTION_SERVICE_URL,
+    changeOrigin: true,
+    pathRewrite: { "^/(.*)$": "/transactions/$1" },
+  })
 );
 
 app.use(
   "/audit",
   requireAuth,
-  createProxyMiddleware({ target: AUDIT_SERVICE_URL, changeOrigin: true })
+  createProxyMiddleware({
+    target: AUDIT_SERVICE_URL,
+    changeOrigin: true,
+    pathRewrite: { "^/(.*)$": "/audit/$1" },
+  })
 );
 
 app.use((_req, res) => res.status(404).json({ error: "not_found" }));
