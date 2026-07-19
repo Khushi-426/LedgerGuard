@@ -1,0 +1,11 @@
+{
+  "name": "ledgerguard-simulator",
+  "version": "1.0.0",
+  "private": true,
+  "main": "replay.js",
+  "scripts": { "start": "node replay.js" },
+  "dependencies": {
+    "axios": "^1.7.4",
+    "csv-parse": "^5.5.6"
+  }
+}

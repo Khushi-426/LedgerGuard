@@ -1,0 +1,53 @@
+const express = require("express");
+const cors = require("cors");
+const rateLimit = require("express-rate-limit");
+const { createProxyMiddleware } = require("http-proxy-middleware");
+const { requireAuth } = require("./middleware/auth");
+
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || "http://localhost:4001";
+const TRANSACTION_SERVICE_URL = process.env.TRANSACTION_SERVICE_URL || "http://localhost:4002";
+const AUDIT_SERVICE_URL = process.env.AUDIT_SERVICE_URL || "http://localhost:4003";
+
+const app = express();
+app.use(cors());
+
+// Centralized rate limiting - every business service is protected by one
+// policy instead of each reimplementing it (design doc section 4).
+app.use(
+  rateLimit({
+    windowMs: 60 * 1000,
+    limit: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+);
+
+app.get("/health", (_req, res) => res.json({ status: "ok", service: "api-gateway" }));
+
+// Auth routes are public (you can't require a JWT to log in).
+app.use(
+  "/auth",
+  createProxyMiddleware({
+    target: AUTH_SERVICE_URL,
+    changeOrigin: true,
+    pathRewrite: { "^/auth": "" },
+  })
+);
+
+// Everything else requires a verified JWT before the gateway forwards it.
+app.use(
+  "/transactions",
+  requireAuth,
+  createProxyMiddleware({ target: TRANSACTION_SERVICE_URL, changeOrigin: true })
+);
+
+app.use(
+  "/audit",
+  requireAuth,
+  createProxyMiddleware({ target: AUDIT_SERVICE_URL, changeOrigin: true })
+);
+
+app.use((_req, res) => res.status(404).json({ error: "not_found" }));
+
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => console.log(`[api-gateway] listening on :${PORT}`));
