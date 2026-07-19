@@ -31,8 +31,10 @@ const EMAIL = process.env.EMAIL || "demo@ledgerguard.dev";
 const PASSWORD = process.env.PASSWORD || "Password123!";
 const ACCOUNT_ID = process.env.ACCOUNT_ID;
 const CSV_PATH = process.env.CSV_PATH || path.join(__dirname, "data", "creditcard.csv");
-const RATE_PER_SECOND = Number(process.env.RATE_PER_SECOND || 5);
+const RATE_PER_SECOND = Number(process.env.RATE_PER_SECOND || 2);
 const MAX_ROWS = Number(process.env.MAX_ROWS || 500);
+const MAX_TXN_ATTEMPTS = Number(process.env.MAX_TXN_ATTEMPTS || 5);
+const BASE_RETRY_MS = Number(process.env.BASE_RETRY_MS || 500);
 const PG_HOST = process.env.PGHOST || "localhost";
 const PG_PORT = Number(process.env.PGPORT || 5432);
 const PG_USER = process.env.PGUSER || process.env.POSTGRES_USER || "ledgerguard";
@@ -69,6 +71,21 @@ function toFeatureVector(row) {
     vector[col] = Number(row[col]);
   }
   return vector;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseRetryAfter(headerValue) {
+  if (!headerValue) return null;
+  const numeric = Number(headerValue);
+  if (!Number.isNaN(numeric)) return numeric * 1000;
+  const dateValue = Date.parse(headerValue);
+  if (!Number.isNaN(dateValue)) {
+    return Math.max(dateValue - Date.now(), 0);
+  }
+  return null;
 }
 
 async function getDbClient() {
@@ -163,6 +180,33 @@ async function findOrCreateAccountId() {
   }
 }
 
+async function postTransactionWithRetry(client, payload) {
+  for (let attempt = 1; attempt <= MAX_TXN_ATTEMPTS; attempt += 1) {
+    try {
+      const { data } = await client.post("/transactions", payload);
+      return data;
+    } catch (err) {
+      const status = err.response?.status;
+      if (status !== 429) {
+        throw new Error(err.response?.data?.error || err.message);
+      }
+
+      if (attempt === MAX_TXN_ATTEMPTS) {
+        throw new Error(
+          `rate limited after ${MAX_TXN_ATTEMPTS} attempts when sending transaction ${payload.idempotencyKey}`
+        );
+      }
+
+      const retryAfterMs = parseRetryAfter(err.response.headers["retry-after"]);
+      const backoffMs = retryAfterMs ?? BASE_RETRY_MS * 2 ** (attempt - 1);
+      console.log(
+        `[simulator] 429 received, backing off ${backoffMs}ms (attempt ${attempt}/${MAX_TXN_ATTEMPTS})`
+      );
+      await delay(backoffMs);
+    }
+  }
+}
+
 async function main() {
   if (!fs.existsSync(CSV_PATH)) {
     throw new Error(
@@ -184,25 +228,26 @@ async function main() {
 
   for (const row of readRows(CSV_PATH, MAX_ROWS)) {
     const amount = Number(row.Amount) || 0.01;
+    const payload = {
+      accountId,
+      amount: Math.max(amount, 0.01),
+      currency: "USD",
+      idempotencyKey: crypto.randomUUID(),
+      sourceFeatures: toFeatureVector(row),
+    };
 
     try {
-      const { data } = await client.post("/transactions", {
-        accountId,
-        amount: Math.max(amount, 0.01),
-        currency: "USD",
-        idempotencyKey: crypto.randomUUID(),
-        sourceFeatures: toFeatureVector(row),
-      });
+      const data = await postTransactionWithRetry(client, payload);
       sent += 1;
       if (row.Class === "1") flagged += 1;
       process.stdout.write(
         `\rsent=${sent} known_fraud_rows_replayed=${flagged} last_txn=${data.transaction.id}`
       );
     } catch (err) {
-      console.error(`\n[simulator] request failed: ${err.response?.data?.error || err.message}`);
+      console.error(`\n[simulator] request failed: ${err.message}`);
     }
 
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    await delay(intervalMs);
   }
 
   console.log(`\n[simulator] done. Sent ${sent} transactions (${flagged} were known-fraud rows in the source data).`);

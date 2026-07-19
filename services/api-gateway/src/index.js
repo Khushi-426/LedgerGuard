@@ -14,7 +14,9 @@ const app = express();
 app.use(cors());
 
 // Centralized rate limiting - every business service is protected by one
-// policy instead of each reimplementing it (design doc section 4).
+// policy instead of each reimplementing it.
+// Defaults are tuned for local dev/demo replay traffic but may be adjusted
+// via API_RATE_LIMIT and API_RATE_WINDOW_MS.
 app.use(
   rateLimit({
     windowMs: API_RATE_WINDOW_MS,

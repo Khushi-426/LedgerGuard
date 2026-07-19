@@ -89,11 +89,18 @@ npm install
 API_BASE_URL=http://localhost:8080 \
 EMAIL=demo@ledgerguard.dev PASSWORD=Password123! \
 CSV_PATH=../services/ml-prediction-service/data/creditcard.csv \
-RATE_PER_SECOND=5 \
+RATE_PER_SECOND=2 \
 node replay.js
 ```
 
-The simulator now defaults to the demo credentials above when `EMAIL` and `PASSWORD` are not explicitly provided.
+The simulator defaults to the demo credentials above when `EMAIL` and `PASSWORD` are not explicitly provided.
+
+The simulator now includes automatic 429 handling:
+- it backs off using `Retry-After` when available,
+- it uses exponential backoff otherwise,
+- it retries the same transaction up to `MAX_TXN_ATTEMPTS` times.
+
+The API Gateway rate limiter defaults to 600 requests per 60 seconds (`API_RATE_LIMIT=600`, `API_RATE_WINDOW_MS=60000`).
 
 If `ACCOUNT_ID` is not provided, `replay.js` will:
 - register the demo user if needed,
