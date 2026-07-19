@@ -64,17 +64,22 @@ Services and ports:
 
 ## 3. Create a user and an account
 
+The simulator can now create the required account automatically if it does not exist.
+
 ```bash
 curl -X POST http://localhost:8080/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"demo@ledgerguard.dev","password":"Password123!","role":"analyst"}'
+```
 
-# seed an account directly for now (no accounts endpoint yet - see roadmap)
+If you want to seed an account manually, this SQL command still works:
+
+```bash
 docker exec -it lg-postgres psql -U ledgerguard -d ledgerguard -c \
   "INSERT INTO accounts (user_id, account_number) SELECT id, '1234567890' FROM users WHERE email='demo@ledgerguard.dev' RETURNING id;"
 ```
 
-Copy the returned account `id` for the next step.
+Copy the returned account `id` if you choose the manual option.
 
 ## 4. Replay the dataset as live traffic
 
@@ -83,11 +88,19 @@ cd simulator
 npm install
 API_BASE_URL=http://localhost:8080 \
 EMAIL=demo@ledgerguard.dev PASSWORD=Password123! \
-ACCOUNT_ID=<uuid-from-step-3> \
 CSV_PATH=../services/ml-prediction-service/data/creditcard.csv \
 RATE_PER_SECOND=5 \
 node replay.js
 ```
+
+The simulator now defaults to the demo credentials above when `EMAIL` and `PASSWORD` are not explicitly provided.
+
+If `ACCOUNT_ID` is not provided, `replay.js` will:
+- register the demo user if needed,
+- look up or create a matching account in Postgres,
+- print the account UUID it uses.
+
+If you already have an account UUID from manual seeding, you may still pass `ACCOUNT_ID=<uuid>`.
 
 ## 5. Watch it work
 

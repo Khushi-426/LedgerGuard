@@ -7,6 +7,8 @@ const { requireAuth } = require("./middleware/auth");
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || "http://localhost:4001";
 const TRANSACTION_SERVICE_URL = process.env.TRANSACTION_SERVICE_URL || "http://localhost:4002";
 const AUDIT_SERVICE_URL = process.env.AUDIT_SERVICE_URL || "http://localhost:4003";
+const API_RATE_LIMIT = Number(process.env.API_RATE_LIMIT || 600);
+const API_RATE_WINDOW_MS = Number(process.env.API_RATE_WINDOW_MS || 60 * 1000);
 
 const app = express();
 app.use(cors());
@@ -15,8 +17,8 @@ app.use(cors());
 // policy instead of each reimplementing it (design doc section 4).
 app.use(
   rateLimit({
-    windowMs: 60 * 1000,
-    limit: 120,
+    windowMs: API_RATE_WINDOW_MS,
+    limit: API_RATE_LIMIT,
     standardHeaders: true,
     legacyHeaders: false,
   })
